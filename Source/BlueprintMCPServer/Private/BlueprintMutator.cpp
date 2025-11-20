@@ -18,6 +18,8 @@
 #include "UObject/SavePackage.h"
 #include "Components/ActorComponent.h"
 #include "KismetCompilerModule.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 
 FMcpCreationResult FMcpBlueprintMutator::CreateBlueprint(const FString& PackagePath, UClass* ParentClass)
 {
@@ -164,6 +166,18 @@ bool FMcpBlueprintMutator::AddEventNode(UBlueprint* Blueprint, const FName& Grap
         return false;
     }
 
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+        {
+            if (EventNode->EventReference.GetMemberName() == EventName)
+            {
+                OutNodeGuid = EventNode->NodeGuid;
+                return true;
+            }
+        }
+    }
+
     UK2Node_Event* Node = NewObject<UK2Node_Event>(Graph);
     Node->CreateNewGuid();
     Node->SetFlags(RF_Transactional);
@@ -202,10 +216,12 @@ bool FMcpBlueprintMutator::AddInputActionEvent(UBlueprint* Blueprint, const FNam
         return false;
     }
 
+    const FString InputActionName = FPackageName::ObjectPathToObjectName(InputActionPath);
+
     UK2Node_InputAction* Node = NewObject<UK2Node_InputAction>(Graph);
     Node->CreateNewGuid();
     Node->SetFlags(RF_Transactional);
-    Node->InputActionName = FName(*InputActionPath);
+    Node->InputActionName = FName(*InputActionName);
     Node->bConsumeInput = false;
     Node->bExecuteWhenPaused = false;
     Node->bOverrideParentBinding = false;
@@ -227,14 +243,21 @@ bool FMcpBlueprintMutator::AddComponent(UBlueprint* Blueprint, UClass* Component
         return false;
     }
 
-    UActorComponent* Template = NewObject<UActorComponent>(Blueprint, ComponentClass, ComponentName, RF_Transactional | RF_Public);
-    if (!Template)
+    USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript;
+    if (!SCS)
     {
-        OutError = TEXT("Failed to create component template.");
+        OutError = TEXT("SimpleConstructionScript missing.");
         return false;
     }
 
-    Blueprint->ComponentTemplates.Add(Template);
+    USCS_Node* NewNode = SCS->CreateNode(ComponentClass, ComponentName);
+    if (!NewNode)
+    {
+        OutError = TEXT("Failed to create SCS node.");
+        return false;
+    }
+
+    SCS->AddNode(NewNode);
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
     return true;
 }
