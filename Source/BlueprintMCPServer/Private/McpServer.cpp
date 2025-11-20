@@ -11,6 +11,7 @@
 #include "IHttpRouter.h"
 #include "Json.h"
 #include "JsonUtilities.h"
+#include "HAL/PlatformProcess.h"
 
 FMcpServer::FMcpServer()
     : bIsRunning(false)
@@ -231,6 +232,24 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
         return true;
     };
 
+    auto RunGameThread = [](TFunction<void()>&& InFunc)
+    {
+        if (IsInGameThread())
+        {
+            InFunc();
+            return;
+        }
+
+        FEvent* Event = FPlatformProcess::GetSynchEventFromPool(true);
+        AsyncTask(ENamedThreads::GameThread, [Event, Func = MoveTemp(InFunc)]() mutable
+        {
+            Func();
+            Event->Trigger();
+        });
+        Event->Wait();
+        FPlatformProcess::ReturnSynchEventToPool(Event);
+    };
+
     if (Action == TEXT("create_blueprint"))
     {
         if (!RequireWrite())
@@ -258,8 +277,14 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
             }
         }
 
-        FMcpCreationResult Result = FMcpBlueprintMutator::CreateBlueprint(PackagePath, ParentClass);
-        if (!Result.bSuccess)
+        FMcpCreationResult Result;
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            Result = FMcpBlueprintMutator::CreateBlueprint(PackagePath, ParentClass);
+            bOk = Result.bSuccess;
+        });
+        if (!bOk)
         {
             OutError = Result.Error;
             return false;
@@ -321,7 +346,12 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
             return false;
         }
 
-        if (!FMcpBlueprintMutator::AddVariable(Blueprint, FName(*VarNameStr), PinType, OutError))
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::AddVariable(Blueprint, FName(*VarNameStr), PinType, OutError);
+        });
+        if (!bOk)
         {
             return false;
         }
@@ -356,7 +386,12 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
             return false;
         }
 
-        if (!FMcpBlueprintMutator::AddFunctionGraph(Blueprint, FName(*FunctionName), OutError))
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::AddFunctionGraph(Blueprint, FName(*FunctionName), OutError);
+        });
+        if (!bOk)
         {
             return false;
         }
@@ -407,7 +442,12 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
         }
 
         FGuid NewGuid;
-        if (!FMcpBlueprintMutator::AddCallFunctionNode(Blueprint, FName(*GraphName), TargetFunction, FVector2D((float)PosX, (float)PosY), OutError, NewGuid))
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::AddCallFunctionNode(Blueprint, FName(*GraphName), TargetFunction, FVector2D((float)PosX, (float)PosY), OutError, NewGuid);
+        });
+        if (!bOk)
         {
             return false;
         }
@@ -459,7 +499,12 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
             return false;
         }
 
-        if (!FMcpBlueprintMutator::ConnectPins(Blueprint, FName(*GraphName), FromGuid, FromPin, ToGuid, ToPin, OutError))
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::ConnectPins(Blueprint, FName(*GraphName), FromGuid, FromPin, ToGuid, ToPin, OutError);
+        });
+        if (!bOk)
         {
             return false;
         }
@@ -493,7 +538,12 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
             return false;
         }
 
-        if (!FMcpBlueprintMutator::Compile(Blueprint, OutError))
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::Compile(Blueprint, OutError);
+        });
+        if (!bOk)
         {
             return false;
         }
@@ -527,7 +577,12 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
             return false;
         }
 
-        if (!FMcpBlueprintMutator::SaveBlueprint(Blueprint, OutError))
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::SaveBlueprint(Blueprint, OutError);
+        });
+        if (!bOk)
         {
             return false;
         }

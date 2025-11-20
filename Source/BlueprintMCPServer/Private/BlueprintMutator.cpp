@@ -28,22 +28,20 @@ FMcpCreationResult FMcpBlueprintMutator::CreateBlueprint(const FString& PackageP
         return Result;
     }
 
-    FString PackageName;
-    FString AssetName;
-    if (!FPackageName::TryConvertLongPackageNameToFilename(PackagePath, PackageName))
+    if (!PackagePath.StartsWith(TEXT("/")))
     {
-        // Interpret the incoming path as long package name; split last token as asset.
-        PackageName = PackagePath;
-    }
-
-    int32 SlashIndex;
-    if (!PackageName.FindLastChar('/', SlashIndex))
-    {
-        Result.Error = TEXT("Invalid package path.");
+        Result.Error = TEXT("Package path must start with '/'. Use long package names like /Game/MyFolder/BP_Name.");
         return Result;
     }
-    AssetName = PackageName.Mid(SlashIndex + 1);
-    PackageName = PackageName.Left(SlashIndex);
+
+    if (!FPackageName::IsValidLongPackageName(PackagePath))
+    {
+        Result.Error = TEXT("Package path is not a valid long package name (e.g., /Game/MyFolder/BP_Name).");
+        return Result;
+    }
+
+    const FString AssetName = FPackageName::GetLongPackageAssetName(PackagePath);
+    const FString PackageName = FPackageName::GetLongPackagePath(PackagePath);
 
     UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
     Factory->ParentClass = ParentClass ? ParentClass : AActor::StaticClass();
