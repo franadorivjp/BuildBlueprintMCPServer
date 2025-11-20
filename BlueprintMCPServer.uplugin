@@ -1,0 +1,31 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0.0",
+  "FriendlyName": "Blueprint MCP Server",
+  "Description": "Editor-only MCP server that exposes Blueprint structure and references over a local endpoint.",
+  "Category": "Editor",
+  "CreatedBy": "Generated",
+  "CreatedByURL": "http://localhost",
+  "DocsURL": "",
+  "MarketplaceURL": "",
+  "SupportURL": "",
+  "CanContainContent": false,
+  "IsBetaVersion": false,
+  "IsExperimentalVersion": false,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "BlueprintMCPServer",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "SupportedTargetPlatforms": [
+    "Win64",
+    "Mac",
+    "Linux"
+  ],
+  "EngineVersion": "5.7.0",
+  "EnabledByDefault": false
+}

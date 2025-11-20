@@ -1,0 +1,14 @@
+# Build artifacts
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# IDE
+.vs/
+.vscode/
+
+# OS
+Thumbs.db
+Desktop.ini
+*.log
