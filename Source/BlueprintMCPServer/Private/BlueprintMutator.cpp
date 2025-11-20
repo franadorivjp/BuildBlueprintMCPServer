@@ -299,7 +299,7 @@ bool FMcpBlueprintMutator::SetPinDefault(UBlueprint* Blueprint, const FName& Gra
         {
             if (const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>())
             {
-                Schema->TrySetDefaultValue(*Pin, LiteralValue);
+                Schema->SetPinDefaultValue(*Pin, LiteralValue);
             }
             else
             {
