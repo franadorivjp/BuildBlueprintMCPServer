@@ -16,6 +16,7 @@ Editor-only Unreal Engine 5.7+ plugin that runs a local MCP-compatible HTTP endp
 - Set a port (default `9000`), click **Start Server**.
 - The log panel shows server lifecycle and incoming MCP actions.
 - Optional: provide a Blueprint asset path (e.g., `/Game/Blueprints/BP_MyAsset.BP_MyAsset`) and click **Export JSON** to preview inspector output.
+- Toggle **Enable write operations (unsafe)** to allow MCP to create/modify Blueprints.
 
 ## MCP HTTP API (local-only)
 POST `http://127.0.0.1:PORT/mcp` with JSON body `{ "action": "...", "params": { ... } }`.
@@ -24,6 +25,14 @@ Actions:
 - `list_blueprints` – params: optional `paths: ["/Game", "/Game/Blueprints"]`
 - `get_blueprint_structure` – params: `asset_path: "/Game/Blueprints/BP_X.BP_X"`
 - `get_references` – params: `asset_path: "/Game/Blueprints/BP_X.BP_X"`
+- Write actions (require UI toggle on):
+  - `create_blueprint` – `package_path`, optional `parent_class` (e.g., `/Game/MyFolder/BP_New`, `parent_class: "Actor"`).
+  - `add_variable` – `asset_path`, `name`, `type: { category, sub_category?, is_array?, is_set?, is_map? }`.
+  - `add_function_graph` – `asset_path`, `name`.
+  - `add_call_function_node` – `asset_path`, `graph`, `function_path` (e.g., `/Script/Engine.Character.Jump`), optional `x`,`y`.
+  - `connect_pins` – `asset_path`, `graph`, `from_node`, `from_pin`, `to_node`, `to_pin` (node GUIDs from `get_blueprint_structure`).
+  - `compile_blueprint` – `asset_path`.
+  - `save_blueprint` – `asset_path`.
 
 Errors return HTTP 400 with `{ "error": "reason" }`.
 

@@ -22,6 +22,7 @@ public:
 
     bool IsRunning() const { return bIsRunning; }
     uint16 GetPort() const { return Port; }
+    void SetAllowWrites(bool bInAllowWrites) { bAllowWrites = bInAllowWrites; }
 
     FMcpLogDelegate OnLog;
 
@@ -29,6 +30,7 @@ private:
     bool HandleRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
     bool DispatchAction(const FString& Action, const TSharedPtr<FJsonObject>& Payload, FString& OutResponse, FString& OutError) const;
     void Log(const FString& Message) const;
+    bool bAllowWrites = false;
 
     bool bIsRunning;
     uint16 Port;

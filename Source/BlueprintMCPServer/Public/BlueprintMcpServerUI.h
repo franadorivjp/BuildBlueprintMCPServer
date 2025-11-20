@@ -21,6 +21,7 @@ private:
 
     FReply OnToggleServer();
     FReply OnExportJson();
+    void OnToggleWrites(ECheckBoxState State);
 
     FText GetStatusText() const;
     FText GetErrorText() const;
@@ -34,4 +35,5 @@ private:
     FString LastError;
     TArray<FString> LogLines;
     FDelegateHandle LogDelegateHandle;
+    bool bAllowWrites = false;
 };

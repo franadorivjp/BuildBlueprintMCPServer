@@ -2,6 +2,7 @@
 
 #include "Async/Async.h"
 #include "BlueprintInspector.h"
+#include "BlueprintMutator.h"
 #include "HttpPath.h"
 #include "HttpRequestHandler.h"
 #include "HttpServerModule.h"
@@ -219,6 +220,326 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
         return true;
     }
 
+    // Write operations (require bAllowWrites)
+    auto RequireWrite = [this, &OutError]() -> bool
+    {
+        if (!bAllowWrites)
+        {
+            OutError = TEXT("Write operations are disabled.");
+            return false;
+        }
+        return true;
+    };
+
+    if (Action == TEXT("create_blueprint"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString PackagePath;
+        FString ParentClassName;
+        if (!Payload.IsValid() || !Payload->TryGetStringField(TEXT("package_path"), PackagePath))
+        {
+            OutError = TEXT("Missing 'package_path'");
+            return false;
+        }
+        Payload->TryGetStringField(TEXT("parent_class"), ParentClassName);
+
+        UClass* ParentClass = AActor::StaticClass();
+        if (!ParentClassName.IsEmpty())
+        {
+            ParentClass = FindObject<UClass>(nullptr, *ParentClassName);
+            if (!ParentClass)
+            {
+                OutError = FString::Printf(TEXT("Parent class '%s' not found."), *ParentClassName);
+                return false;
+            }
+        }
+
+        FMcpCreationResult Result = FMcpBlueprintMutator::CreateBlueprint(PackagePath, ParentClass);
+        if (!Result.bSuccess)
+        {
+            OutError = Result.Error;
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("asset_path"), Result.AssetPath);
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Created Blueprint '%s'."), *Result.AssetPath));
+        return true;
+    }
+
+    if (Action == TEXT("add_variable"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        FString VarNameStr;
+        if (!Payload.IsValid() || !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) || !Payload->TryGetStringField(TEXT("name"), VarNameStr))
+        {
+            OutError = TEXT("Missing 'asset_path' or 'name'.");
+            return false;
+        }
+
+        const TSharedPtr<FJsonObject>* TypeObj = nullptr;
+        if (!Payload->TryGetObjectField(TEXT("type"), TypeObj) || !TypeObj || !TypeObj->IsValid())
+        {
+            OutError = TEXT("Missing 'type' object.");
+            return false;
+        }
+
+        FEdGraphPinType PinType;
+        FString Category;
+        (*TypeObj)->TryGetStringField(TEXT("category"), Category);
+        PinType.PinCategory = FName(*Category);
+        FString SubCategory;
+        (*TypeObj)->TryGetStringField(TEXT("sub_category"), SubCategory);
+        if (!SubCategory.IsEmpty())
+        {
+            PinType.PinSubCategory = FName(*SubCategory);
+        }
+
+        bool bIsArray = false;
+        bool bIsSet = false;
+        bool bIsMap = false;
+        (*TypeObj)->TryGetBoolField(TEXT("is_array"), bIsArray);
+        (*TypeObj)->TryGetBoolField(TEXT("is_set"), bIsSet);
+        (*TypeObj)->TryGetBoolField(TEXT("is_map"), bIsMap);
+        PinType.ContainerType = bIsArray ? EPinContainerType::Array : (bIsSet ? EPinContainerType::Set : (bIsMap ? EPinContainerType::Map : EPinContainerType::None));
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        if (!FMcpBlueprintMutator::AddVariable(Blueprint, FName(*VarNameStr), PinType, OutError))
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("status"), TEXT("ok"));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Added variable '%s' to '%s'."), *VarNameStr, *AssetPath));
+        return true;
+    }
+
+    if (Action == TEXT("add_function_graph"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        FString FunctionName;
+        if (!Payload.IsValid() || !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) || !Payload->TryGetStringField(TEXT("name"), FunctionName))
+        {
+            OutError = TEXT("Missing 'asset_path' or 'name'.");
+            return false;
+        }
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        if (!FMcpBlueprintMutator::AddFunctionGraph(Blueprint, FName(*FunctionName), OutError))
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("status"), TEXT("ok"));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Added function graph '%s' to '%s'."), *FunctionName, *AssetPath));
+        return true;
+    }
+
+    if (Action == TEXT("add_call_function_node"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        FString GraphName;
+        FString FunctionPath;
+        double PosX = 0;
+        double PosY = 0;
+        if (!Payload.IsValid() ||
+            !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) ||
+            !Payload->TryGetStringField(TEXT("graph"), GraphName) ||
+            !Payload->TryGetStringField(TEXT("function_path"), FunctionPath))
+        {
+            OutError = TEXT("Missing 'asset_path', 'graph', or 'function_path'.");
+            return false;
+        }
+        Payload->TryGetNumberField(TEXT("x"), PosX);
+        Payload->TryGetNumberField(TEXT("y"), PosY);
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        UFunction* TargetFunction = FindObject<UFunction>(nullptr, *FunctionPath);
+        if (!TargetFunction)
+        {
+            OutError = TEXT("Function not found.");
+            return false;
+        }
+
+        FGuid NewGuid;
+        if (!FMcpBlueprintMutator::AddCallFunctionNode(Blueprint, FName(*GraphName), TargetFunction, FVector2D((float)PosX, (float)PosY), OutError, NewGuid))
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("node_guid"), NewGuid.ToString(EGuidFormats::DigitsWithHyphens));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Added call node '%s' to graph '%s'."), *FunctionPath, *GraphName));
+        return true;
+    }
+
+    if (Action == TEXT("connect_pins"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        FString GraphName;
+        FString FromGuidStr;
+        FString ToGuidStr;
+        FString FromPin;
+        FString ToPin;
+        if (!Payload.IsValid() ||
+            !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) ||
+            !Payload->TryGetStringField(TEXT("graph"), GraphName) ||
+            !Payload->TryGetStringField(TEXT("from_node"), FromGuidStr) ||
+            !Payload->TryGetStringField(TEXT("from_pin"), FromPin) ||
+            !Payload->TryGetStringField(TEXT("to_node"), ToGuidStr) ||
+            !Payload->TryGetStringField(TEXT("to_pin"), ToPin))
+        {
+            OutError = TEXT("Missing parameters for connect_pins.");
+            return false;
+        }
+
+        FGuid FromGuid, ToGuid;
+        if (!FGuid::Parse(FromGuidStr, FromGuid) || !FGuid::Parse(ToGuidStr, ToGuid))
+        {
+            OutError = TEXT("Invalid node GUID.");
+            return false;
+        }
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        if (!FMcpBlueprintMutator::ConnectPins(Blueprint, FName(*GraphName), FromGuid, FromPin, ToGuid, ToPin, OutError))
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("status"), TEXT("ok"));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Connected pins %s:%s -> %s:%s"), *FromGuidStr, *FromPin, *ToGuidStr, *ToPin));
+        return true;
+    }
+
+    if (Action == TEXT("compile_blueprint"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        if (!Payload.IsValid() || !Payload->TryGetStringField(TEXT("asset_path"), AssetPath))
+        {
+            OutError = TEXT("Missing 'asset_path'");
+            return false;
+        }
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        if (!FMcpBlueprintMutator::Compile(Blueprint, OutError))
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("status"), TEXT("ok"));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Compiled Blueprint '%s'."), *AssetPath));
+        return true;
+    }
+
+    if (Action == TEXT("save_blueprint"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        if (!Payload.IsValid() || !Payload->TryGetStringField(TEXT("asset_path"), AssetPath))
+        {
+            OutError = TEXT("Missing 'asset_path'");
+            return false;
+        }
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        if (!FMcpBlueprintMutator::SaveBlueprint(Blueprint, OutError))
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("status"), TEXT("ok"));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Saved Blueprint '%s'."), *AssetPath));
+        return true;
+    }
+
     OutError = FString::Printf(TEXT("Unknown action '%s'"), *Action);
     return false;
 }
@@ -229,10 +550,10 @@ void FMcpServer::Log(const FString& Message) const
 
     if (OnLog.IsBound())
     {
-        TWeakPtr<const FMcpServer> SelfWeak = AsShared();
+        TWeakPtr<FMcpServer> SelfWeak = const_cast<FMcpServer*>(this)->AsShared();
         AsyncTask(ENamedThreads::GameThread, [SelfWeak, Message]()
         {
-            if (TSharedPtr<const FMcpServer> Self = SelfWeak.Pin())
+            if (TSharedPtr<FMcpServer> Self = SelfWeak.Pin())
             {
                 Self->OnLog.Broadcast(Message);
             }

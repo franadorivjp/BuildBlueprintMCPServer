@@ -23,10 +23,13 @@ public class BlueprintMCPServer : ModuleRules
             "ToolMenus",
             "LevelEditor",
             "AssetRegistry",
+            "AssetTools",
             "Kismet",
+            "KismetCompiler",
             "BlueprintGraph",
             "EditorStyle",
             "HttpServer",
+            "HTTPServer",
             "Projects"
         });
     }

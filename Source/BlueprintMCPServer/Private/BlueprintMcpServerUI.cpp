@@ -7,6 +7,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Framework/Text/TextLayout.h"
@@ -69,6 +70,30 @@ void SBlueprintMcpServerPanel::Construct(const FArguments& InArgs)
             [
                 SNew(STextBlock)
                 .Text_Lambda([this]() { return GetStatusText(); })
+            ]
+        ]
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(4)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCheckBox)
+                .OnCheckStateChanged(this, &SBlueprintMcpServerPanel::OnToggleWrites)
+                .IsChecked_Lambda([this]() { return bAllowWrites ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(6,0)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("AllowWrites", "Enable write operations (unsafe)"))
+                .ToolTipText(LOCTEXT("AllowWritesTip", "Allows MCP actions that create or modify Blueprints."))
             ]
         ]
 
@@ -245,6 +270,16 @@ bool SBlueprintMcpServerPanel::IsServerRunning() const
 {
     const TSharedPtr<FMcpServer> Server = McpServerWeak.Pin();
     return Server.IsValid() && Server->IsRunning();
+}
+
+void SBlueprintMcpServerPanel::OnToggleWrites(ECheckBoxState State)
+{
+    bAllowWrites = State == ECheckBoxState::Checked;
+    if (TSharedPtr<FMcpServer> Server = McpServerWeak.Pin())
+    {
+        Server->SetAllowWrites(bAllowWrites);
+    }
+    AppendLog(bAllowWrites ? TEXT("Write operations enabled.") : TEXT("Write operations disabled."));
 }
 
 #undef LOCTEXT_NAMESPACE
