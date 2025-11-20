@@ -66,6 +66,11 @@ bool FMcpServer::Start(uint16 InPort, FString& OutError)
 
 void FMcpServer::Stop()
 {
+    if (!bIsRunning && !Router.IsValid())
+    {
+        return;
+    }
+
     if (Router.IsValid())
     {
         for (FHttpRouteHandle& Handle : RouteHandles)
@@ -75,7 +80,7 @@ void FMcpServer::Stop()
         RouteHandles.Reset();
     }
 
-    if (HttpServerModule)
+    if (HttpServerModule && FHttpServerModule::IsAvailable())
     {
         HttpServerModule->StopAllListeners();
     }
