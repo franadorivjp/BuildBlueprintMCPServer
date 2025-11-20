@@ -26,10 +26,14 @@ Actions:
 - `get_blueprint_structure` – params: `asset_path: "/Game/Blueprints/BP_X.BP_X"`
 - `get_references` – params: `asset_path: "/Game/Blueprints/BP_X.BP_X"`
 - Write actions (require UI toggle on):
-  - `create_blueprint` – `package_path`, optional `parent_class` (e.g., `/Game/MyFolder/BP_New`, `parent_class: "Actor"`).
+  - `create_blueprint` – `package_path`, optional `parent_class` (e.g., `/Game/MyFolder/BP_New`, `parent_class: "/Script/Engine.Pawn"`).
   - `add_variable` – `asset_path`, `name`, `type: { category, sub_category?, is_array?, is_set?, is_map? }`.
   - `add_function_graph` – `asset_path`, `name`.
   - `add_call_function_node` – `asset_path`, `graph`, `function_path` (e.g., `/Script/Engine.Character.Jump`), optional `x`,`y`.
+  - `add_event_node` – `asset_path`, `graph`, `event_name`, optional `x`,`y` (returns existing guid if already present).
+  - `add_input_action_event` – `asset_path`, `graph`, `input_action` (asset path), `trigger_event` (e.g., `Pressed`), optional `x`,`y`.
+  - `add_component` – `asset_path`, `component_class` (path), `name` (adds via SimpleConstructionScript).
+  - `set_pin_default` – `asset_path`, `graph`, `node_guid`, `pin_name`, `value` (for vectors: `(X=1.0,Y=0.0,Z=0.0)`).
   - `connect_pins` – `asset_path`, `graph`, `from_node`, `from_pin`, `to_node`, `to_pin` (node GUIDs from `get_blueprint_structure`).
   - `compile_blueprint` – `asset_path`.
   - `save_blueprint` – `asset_path`.
