@@ -460,6 +460,212 @@ bool FMcpServer::DispatchAction(const FString& Action, const TSharedPtr<FJsonObj
         return true;
     }
 
+    if (Action == TEXT("add_event_node"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        FString GraphName;
+        FString EventName;
+        double PosX = 0;
+        double PosY = 0;
+        if (!Payload.IsValid() ||
+            !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) ||
+            !Payload->TryGetStringField(TEXT("graph"), GraphName) ||
+            !Payload->TryGetStringField(TEXT("event_name"), EventName))
+        {
+            OutError = TEXT("Missing 'asset_path', 'graph', or 'event_name'.");
+            return false;
+        }
+        Payload->TryGetNumberField(TEXT("x"), PosX);
+        Payload->TryGetNumberField(TEXT("y"), PosY);
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        FGuid NodeGuid;
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::AddEventNode(Blueprint, FName(*GraphName), FName(*EventName), FVector2D((float)PosX, (float)PosY), OutError, NodeGuid);
+        });
+        if (!bOk)
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("node_guid"), NodeGuid.ToString(EGuidFormats::DigitsWithHyphens));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Added event '%s' to graph '%s'."), *EventName, *GraphName));
+        return true;
+    }
+
+    if (Action == TEXT("add_input_action_event"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        FString GraphName;
+        FString InputAction;
+        FString TriggerEvent;
+        double PosX = 0;
+        double PosY = 0;
+        if (!Payload.IsValid() ||
+            !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) ||
+            !Payload->TryGetStringField(TEXT("graph"), GraphName) ||
+            !Payload->TryGetStringField(TEXT("input_action"), InputAction) ||
+            !Payload->TryGetStringField(TEXT("trigger_event"), TriggerEvent))
+        {
+            OutError = TEXT("Missing 'asset_path', 'graph', 'input_action', or 'trigger_event'.");
+            return false;
+        }
+        Payload->TryGetNumberField(TEXT("x"), PosX);
+        Payload->TryGetNumberField(TEXT("y"), PosY);
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        FGuid NodeGuid;
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::AddInputActionEvent(Blueprint, FName(*GraphName), InputAction, FName(*TriggerEvent), FVector2D((float)PosX, (float)PosY), OutError, NodeGuid);
+        });
+        if (!bOk)
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("node_guid"), NodeGuid.ToString(EGuidFormats::DigitsWithHyphens));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Added input action '%s' to graph '%s'."), *InputAction, *GraphName));
+        return true;
+    }
+
+    if (Action == TEXT("add_component"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        FString ComponentClassPath;
+        FString ComponentName;
+        if (!Payload.IsValid() ||
+            !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) ||
+            !Payload->TryGetStringField(TEXT("component_class"), ComponentClassPath) ||
+            !Payload->TryGetStringField(TEXT("name"), ComponentName))
+        {
+            OutError = TEXT("Missing 'asset_path', 'component_class', or 'name'.");
+            return false;
+        }
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        UClass* ComponentClass = FindObject<UClass>(nullptr, *ComponentClassPath);
+        if (!ComponentClass)
+        {
+            OutError = TEXT("Component class not found.");
+            return false;
+        }
+
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::AddComponent(Blueprint, ComponentClass, FName(*ComponentName), OutError);
+        });
+        if (!bOk)
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("status"), TEXT("ok"));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Added component '%s' to '%s'."), *ComponentName, *AssetPath));
+        return true;
+    }
+
+    if (Action == TEXT("set_pin_default"))
+    {
+        if (!RequireWrite())
+        {
+            return false;
+        }
+
+        FString AssetPath;
+        FString GraphName;
+        FString NodeGuidStr;
+        FString PinName;
+        FString LiteralValue;
+        if (!Payload.IsValid() ||
+            !Payload->TryGetStringField(TEXT("asset_path"), AssetPath) ||
+            !Payload->TryGetStringField(TEXT("graph"), GraphName) ||
+            !Payload->TryGetStringField(TEXT("node_guid"), NodeGuidStr) ||
+            !Payload->TryGetStringField(TEXT("pin_name"), PinName) ||
+            !Payload->TryGetStringField(TEXT("value"), LiteralValue))
+        {
+            OutError = TEXT("Missing parameters for set_pin_default.");
+            return false;
+        }
+
+        FGuid NodeGuid;
+        if (!FGuid::Parse(NodeGuidStr, NodeGuid))
+        {
+            OutError = TEXT("Invalid node_guid.");
+            return false;
+        }
+
+        UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+        if (!Blueprint)
+        {
+            OutError = TEXT("Blueprint not found.");
+            return false;
+        }
+
+        bool bOk = false;
+        RunGameThread([&]()
+        {
+            bOk = FMcpBlueprintMutator::SetPinDefault(Blueprint, FName(*GraphName), NodeGuid, PinName, LiteralValue, OutError);
+        });
+        if (!bOk)
+        {
+            return false;
+        }
+
+        TSharedRef<FJsonObject> ResponseObj = MakeShared<FJsonObject>();
+        ResponseObj->SetStringField(TEXT("status"), TEXT("ok"));
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResponse);
+        FJsonSerializer::Serialize(ResponseObj, Writer);
+        Log(FString::Printf(TEXT("Set pin default %s on node %s"), *PinName, *NodeGuidStr));
+        return true;
+    }
+
     if (Action == TEXT("connect_pins"))
     {
         if (!RequireWrite())
